@@ -1,0 +1,26 @@
+PODS:
+  - MBCircularProgressBar (0.3.5)
+  - Realm (5.3.6):
+    - Realm/Headers (= 5.3.6)
+  - Realm/Headers (5.3.6)
+  - RealmSwift (5.3.6):
+    - Realm (= 5.3.6)
+
+DEPENDENCIES:
+  - MBCircularProgressBar
+  - RealmSwift
+
+SPEC REPOS:
+  trunk:
+    - MBCircularProgressBar
+    - Realm
+    - RealmSwift
+
+SPEC CHECKSUMS:
+  MBCircularProgressBar: 0b795b722a5eb5b0923822f90474e2576a1a7855
+  Realm: cd400dd7e5b5bb5c8ae9842eecd73792369e6ec0
+  RealmSwift: 99a16dbdee5d6dfb3d91d56088a9f8c15c0871d1
+
+PODFILE CHECKSUM: 05f3aee803f5ed75da6f702dca7d4a6819deca89
+
+COCOAPODS: 1.9.3
