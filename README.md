@@ -1,1 +1,1 @@
-# device-finder
+# Device Finder
