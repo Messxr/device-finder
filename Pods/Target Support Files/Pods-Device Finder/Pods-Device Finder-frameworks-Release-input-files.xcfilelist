@@ -1,0 +1,4 @@
+${PODS_ROOT}/Target Support Files/Pods-Device Finder/Pods-Device Finder-frameworks.sh
+${BUILT_PRODUCTS_DIR}/MBCircularProgressBar/MBCircularProgressBar.framework
+${BUILT_PRODUCTS_DIR}/Realm/Realm.framework
+${BUILT_PRODUCTS_DIR}/RealmSwift/RealmSwift.framework

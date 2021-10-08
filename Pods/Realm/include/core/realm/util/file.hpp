@@ -21,30 +21,15 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <ctime>
 #include <functional>
+#include <memory>
 #include <stdexcept>
-#include <string>
 #include <streambuf>
-#include <iostream>
+#include <string>
 
 #ifndef _WIN32
 #include <dirent.h> // POSIX.1-2001
-#endif
-
-#if defined(_MSC_VER) && _MSC_VER >= 1900 // compiling with at least Visual Studio 2015
-#if _MSVC_LANG >= 201703L
-#include <filesystem>
-#else
-#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING // switch to <filesystem> once we switch to C++17
-#include <experimental/filesystem>
-namespace std {
-    namespace filesystem = std::experimental::filesystem::v1;
-}
-#endif
-#define REALM_HAVE_STD_FILESYSTEM 1
-#else
-#define REALM_HAVE_STD_FILESYSTEM 0
 #endif
 
 #include <realm/utilities.hpp>
@@ -54,10 +39,21 @@ namespace std {
 #include <realm/util/function_ref.hpp>
 #include <realm/util/safe_int_ops.hpp>
 
-#if REALM_IOS
-#define REALM_FILELOCK_EMULATION
+#if defined(_MSVC_LANG) && _MSVC_LANG >= 201703L // compiling with MSVC and C++ 17
+#include <filesystem>
+#define REALM_HAVE_STD_FILESYSTEM 1
+#if REALM_UWP
+// workaround for linker issue described in https://github.com/microsoft/STL/issues/322
+// remove once the Windows SDK or STL fixes this.
+#pragma comment(lib, "onecoreuap.lib")
+#endif
+#else
+#define REALM_HAVE_STD_FILESYSTEM 0
 #endif
 
+#if REALM_APPLE_DEVICE && !REALM_TVOS
+#define REALM_FILELOCK_EMULATION
+#endif
 
 namespace realm {
 namespace util {
@@ -159,8 +155,7 @@ public:
 
     /// Create an instance that is not initially attached to an open
     /// file.
-    File() noexcept;
-
+    File() = default;
     ~File() noexcept;
 
     File(File&&) noexcept;
@@ -268,6 +263,7 @@ public:
     /// an open file has undefined behavior.
     SizeType get_size() const;
     static SizeType get_size_static(FileDesc fd);
+    static SizeType get_size_static(const std::string& path);
 
     /// If this causes the file to grow, then the new section will
     /// have undefined contents. Setting the size with this function
@@ -376,7 +372,7 @@ public:
 
     /// Set the path used for emulating file locks. If not set explicitly,
     /// the emulation will use the path of the file itself suffixed by ".fifo"
-    void set_fifo_path(const std::string& fifo_path);
+    void set_fifo_path(const std::string& fifo_dir_path, const std::string& fifo_file_name);
     enum {
         /// If possible, disable opportunistic flushing of dirted
         /// pages of a memory mapped file to physical medium. On some
@@ -446,6 +442,12 @@ public:
     /// calling process has no access to, will necessarily be reported
     /// as not existing.
     static bool exists(const std::string& path);
+
+    /// Get the time of last modification made to the file
+    static time_t last_write_time(const std::string& path);
+
+    /// Get freespace (in bytes) of filesystem containing path
+    static SizeType get_free_space(const std::string& path);
 
     /// Check whether the specified path exists and refers to a directory. If
     /// the referenced file system object resides in an inaccessible directory,
@@ -608,14 +610,14 @@ public:
 
 private:
 #ifdef _WIN32
-    void* m_fd;
-    bool m_have_lock; // Only valid when m_fd is not null
+    void* m_fd = nullptr;
+    bool m_have_lock = false; // Only valid when m_fd is not null
 #else
-    int m_fd;
+    int m_fd = -1;
 #ifdef REALM_FILELOCK_EMULATION
-    int m_pipe_fd; // -1 if no pipe has been allocated for emulation
+    int m_pipe_fd = -1; // -1 if no pipe has been allocated for emulation
     bool m_has_exclusive_lock = false;
-    bool m_has_shared_lock = false;
+    std::string m_fifo_dir_path;
     std::string m_fifo_path;
 #endif
 #endif
@@ -624,6 +626,13 @@ private:
 
     bool lock(bool exclusive, bool non_blocking);
     void open_internal(const std::string& path, AccessMode, CreateMode, int flags, bool* success);
+
+#ifdef REALM_FILELOCK_EMULATION
+    bool has_shared_lock() const noexcept
+    {
+        return m_pipe_fd != -1;
+    }
+#endif
 
     struct MapBase {
         void* m_addr = nullptr;
@@ -737,6 +746,7 @@ public:
     /// Move the mapping from another Map object to this Map object
     File::Map<T>& operator=(File::Map<T>&& other) noexcept
     {
+        REALM_ASSERT(this != &other);
         if (m_addr)
             unmap();
         m_addr = other.get_addr();
@@ -928,7 +938,12 @@ public:
 
     /// Return the associated file system path, or the empty string if there is
     /// no associated file system path, or if the file system path is unknown.
-    std::string get_path() const;
+    const std::string& get_path() const;
+
+    void set_path(std::string path)
+    {
+        m_path = std::move(path);
+    }
 
     const char* message() const noexcept
     {
@@ -988,28 +1003,7 @@ private:
 
 inline File::File(const std::string& path, Mode m)
 {
-#ifdef _WIN32
-    m_fd = nullptr;
-#else
-    m_fd = -1;
-#ifdef REALM_FILELOCK_EMULATION
-    m_pipe_fd = -1;
-#endif
-#endif
-
     open(path, m);
-}
-
-inline File::File() noexcept
-{
-#ifdef _WIN32
-    m_fd = nullptr;
-#else
-    m_fd = -1;
-#ifdef REALM_FILELOCK_EMULATION
-    m_pipe_fd = -1;
-#endif
-#endif
 }
 
 inline File::~File() noexcept
@@ -1017,12 +1011,14 @@ inline File::~File() noexcept
     close();
 }
 
-inline void File::set_fifo_path(const std::string& fifo_path)
+inline void File::set_fifo_path(const std::string& fifo_dir_path, const std::string& fifo_file_name)
 {
 #ifdef REALM_FILELOCK_EMULATION
-    m_fifo_path = fifo_path;
+    m_fifo_dir_path = fifo_dir_path;
+    m_fifo_path = fifo_dir_path + "/" + fifo_file_name;
 #else
-    static_cast<void>(fifo_path);
+    static_cast<void>(fifo_dir_path);
+    static_cast<void>(fifo_file_name);
 #endif
 }
 
@@ -1037,9 +1033,7 @@ inline File::File(File&& f) noexcept
 #ifdef REALM_FILELOCK_EMULATION
     m_pipe_fd = f.m_pipe_fd;
     m_has_exclusive_lock = f.m_has_exclusive_lock;
-    m_has_shared_lock = f.m_has_shared_lock;
     f.m_has_exclusive_lock = false;
-    f.m_has_shared_lock = false;
     f.m_pipe_fd = -1;
 #endif
     f.m_fd = -1;
@@ -1061,9 +1055,7 @@ inline File& File::operator=(File&& f) noexcept
     m_pipe_fd = f.m_pipe_fd;
     f.m_pipe_fd = -1;
     m_has_exclusive_lock = f.m_has_exclusive_lock;
-    m_has_shared_lock = f.m_has_shared_lock;
     f.m_has_exclusive_lock = false;
-    f.m_has_shared_lock = false;
 #endif
 #endif
     m_encryption_key = std::move(f.m_encryption_key);
@@ -1195,7 +1187,7 @@ inline void File::Map<T>::unmap() noexcept
 template <class T>
 inline T* File::Map<T>::remap(const File& f, AccessMode a, size_t size, int map_flags)
 {
-    //MapBase::remap(f, a, size, map_flags);
+    // MapBase::remap(f, a, size, map_flags);
     // missing sync() here?
     unmap();
     map(f, a, size, map_flags);
@@ -1297,7 +1289,7 @@ inline File::AccessError::AccessError(const std::string& msg, const std::string&
 {
 }
 
-inline std::string File::AccessError::get_path() const
+inline const std::string& File::AccessError::get_path() const
 {
     return m_path;
 }

@@ -1,10 +1,10 @@
 PODS:
   - MBCircularProgressBar (0.3.5)
-  - Realm (5.3.6):
-    - Realm/Headers (= 5.3.6)
-  - Realm/Headers (5.3.6)
-  - RealmSwift (5.3.6):
-    - Realm (= 5.3.6)
+  - Realm (10.14.0):
+    - Realm/Headers (= 10.14.0)
+  - Realm/Headers (10.14.0)
+  - RealmSwift (10.14.0):
+    - Realm (= 10.14.0)
 
 DEPENDENCIES:
   - MBCircularProgressBar
@@ -18,9 +18,9 @@ SPEC REPOS:
 
 SPEC CHECKSUMS:
   MBCircularProgressBar: 0b795b722a5eb5b0923822f90474e2576a1a7855
-  Realm: cd400dd7e5b5bb5c8ae9842eecd73792369e6ec0
-  RealmSwift: 99a16dbdee5d6dfb3d91d56088a9f8c15c0871d1
+  Realm: 95a120db10fa66d0f1d10bee4ce828177ae00090
+  RealmSwift: 4937e1b6f9b87bc25dc23883198807bf69e8cb76
 
-PODFILE CHECKSUM: 05f3aee803f5ed75da6f702dca7d4a6819deca89
+PODFILE CHECKSUM: 9d9f473e4859ddac58458e9cc56556a31409f147
 
-COCOAPODS: 1.9.3
+COCOAPODS: 1.11.2
